@@ -11,7 +11,8 @@
 #import "UIColor+CADRACSwippableCellAdditions.h"
 #import "UIView+CADRACSwippableCellAdditions.h"
 
-#import <ReactiveCocoa/ReactiveCocoa.h>
+@import ReactiveObjC;
+//#import <ReactiveCocoa/ReactiveCocoa.h>
 
 @interface CADRACSwippableCell () <UIGestureRecognizerDelegate>
 
@@ -61,36 +62,55 @@
         return gesture.state == UIGestureRecognizerStateEnded || gesture.state == UIGestureRecognizerStateCancelled;
     }];
     
-    RAC(self, contentSnapshotView.center) = [beganOrChangedSignal map:^id(id value) {
-        return [NSValue valueWithCGPoint:[self centerPointForTranslation:[panGesture translationInView:self]]];
+    
+    @weakify(self);
+    
+    RAC(self, contentSnapshotView.center) = [beganOrChangedSignal map:^id(UIPanGestureRecognizer *gestureRecognizer) {
+        typeof(self) strongSelf = gestureRecognizer.delegate;
+        
+        return [NSValue valueWithCGPoint:[strongSelf centerPointForTranslation:[panGesture translationInView:strongSelf]]];
     }];
     
-    [beganOrChangedSignal subscribeNext:^(UIPanGestureRecognizer *panGesture) {
-        [self.contentView addSubview:self.revealView];
-        [self.contentView addSubview:self.contentSnapshotView];
+    [beganOrChangedSignal subscribeNext:^(UIPanGestureRecognizer *gestureRecognizer) {
+        typeof(self) strongSelf = gestureRecognizer.delegate;
         
-        [panGesture setTranslation:CGPointZero inView:self];
+        [strongSelf.contentView addSubview:strongSelf.revealView];
+        [strongSelf.contentView addSubview:strongSelf.contentSnapshotView];
+        
+        [panGesture setTranslation:CGPointZero inView:strongSelf];
     }];
     
     [[endedOrCancelledSignal filter:^BOOL(UIPanGestureRecognizer *gestureRecognizer) {
-        return fabsf(CGRectGetMinX(self.contentSnapshotView.frame)) >= CGRectGetWidth(self.revealView.frame)/2 ||
-               [self shouldShowRevealViewForVelocity:[gestureRecognizer velocityInView:self]];
+        typeof(self) strongSelf = gestureRecognizer.delegate;
+        
+        return fabsf(CGRectGetMinX(strongSelf.contentSnapshotView.frame)) >= CGRectGetWidth(strongSelf.revealView.frame)/2 ||
+               [strongSelf shouldShowRevealViewForVelocity:[gestureRecognizer velocityInView:strongSelf]];
     }] subscribeNext:^(id x) {
+        @strongify(self);
+        
         [self showRevealViewAnimated:YES];
     }];
     
     [[endedOrCancelledSignal filter:^BOOL(UIPanGestureRecognizer *gestureRecognizer) {
-        return fabsf(CGRectGetMinX(self.contentSnapshotView.frame)) < CGRectGetWidth(self.revealView.frame)/2 ||
-               [self shouldHideRevealViewForVelocity:[gestureRecognizer velocityInView:self]];
+        typeof(self) strongSelf = gestureRecognizer.delegate;
+        
+        return fabsf(CGRectGetMinX(strongSelf.contentSnapshotView.frame)) < CGRectGetWidth(strongSelf.revealView.frame)/2 ||
+               [strongSelf shouldHideRevealViewForVelocity:[gestureRecognizer velocityInView:strongSelf]];
     }] subscribeNext:^(id x) {
+        @strongify(self);
+        
         [self hideRevealViewAnimated:YES];
     }];
     
     [[RACSignal merge:@[RACObserve(self, allowedDirection), RACObserve(self, revealView)]] subscribeNext:^(id x) {
+        @strongify(self);
+        
         [self setNeedsLayout];
     }];
     
     [[self rac_prepareForReuseSignal] subscribeNext:^(id x) {
+        @strongify(self);
+        
         [self.contentSnapshotView removeFromSuperview];
         self.contentSnapshotView = nil;
         
@@ -101,10 +121,14 @@
     [[[self rac_signalForSelector:@selector(updateConstraints)] filter:^BOOL(id value) {
         return _contentSnapshotView != nil;
     }] subscribeNext:^(id x) {
-        [self.contentSnapshotView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[_contentSnapshotView]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(_contentSnapshotView)]];
-        [self.contentSnapshotView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[_contentSnapshotView]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(_contentSnapshotView)]];
+        @strongify(self);
         
-        [super updateConstraints];
+        if (self.superview) {
+            [self.contentSnapshotView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[_contentSnapshotView]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(_contentSnapshotView)]];
+            [self.contentSnapshotView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[_contentSnapshotView]|" options:0 metrics:nil views:NSDictionaryOfVariableBindings(_contentSnapshotView)]];
+            
+            [super updateConstraints];
+        }
     }];
     
     [self addGestureRecognizer:panGesture];
